@@ -1,0 +1,2249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reddit Content Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-tertiary: #1a1a26;
+      --border: #2a2a3a;
+      --text-primary: #e8e8f0;
+      --text-secondary: #8888aa;
+      --text-muted: #555570;
+      --accent: #b3c805;
+      --accent-hover: #c8df06;
+      --accent-dim: rgba(179, 200, 5, 0.15);
+      --success: #4ade80;
+      --error: #f87171;
+      --font-heading: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+      --radius: 8px;
+      --radius-lg: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-heading);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    #app {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    header { margin-bottom: 2rem; }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.25rem; }
+
+    section { margin-bottom: 1.5rem; }
+
+    /* --- Collapsible --- */
+    .collapsible-header {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; padding: 0.75rem 0; user-select: none;
+    }
+    .collapsible-header h2 { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+    .collapsible-chevron { transition: transform 0.2s; color: var(--text-muted); font-size: 0.8rem; }
+    .collapsible-chevron.collapsed { transform: rotate(-90deg); }
+    .collapsible-body { overflow: hidden; transition: max-height 0.3s ease; }
+    .collapsible-body.collapsed { max-height: 0 !important; }
+
+    /* --- Form elements --- */
+    label {
+      display: block; font-family: var(--font-mono); font-size: 0.7rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-secondary); margin-bottom: 0.375rem;
+    }
+    input[type="text"], input[type="password"], select {
+      width: 100%; background: var(--bg-tertiary); border: 1px solid var(--border);
+      color: var(--text-primary); padding: 0.625rem 0.875rem; border-radius: var(--radius);
+      font-family: var(--font-mono); font-size: 0.85rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+    input::placeholder { color: var(--text-muted); }
+    select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23555570' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; padding-right: 2rem; }
+    select option { background: var(--bg-tertiary); color: var(--text-primary); }
+
+    .field-group { margin-bottom: 1rem; }
+    .field-row { display: flex; align-items: center; gap: 0.5rem; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error); flex-shrink: 0; transition: background 0.2s; }
+    .status-dot.active { background: var(--success); }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+
+    /* --- Save keys button --- */
+    .save-keys-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+      padding: 0.4rem 0.875rem; border-radius: var(--radius); cursor: pointer;
+      font-family: var(--font-mono); font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.06em; transition: all 0.2s; margin-top: 0.25rem;
+    }
+    .save-keys-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* --- Preset tabs --- */
+    .preset-tabs {
+      display: flex; gap: 0.25rem; margin-bottom: 0.75rem;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .preset-tab {
+      padding: 0.4rem 0.875rem; background: var(--bg-tertiary); border: 1px solid var(--border);
+      border-radius: 100px; cursor: pointer; color: var(--text-muted);
+      font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500;
+      white-space: nowrap; transition: all 0.2s; user-select: none;
+    }
+    .preset-tab:hover { border-color: var(--text-muted); color: var(--text-secondary); }
+    .preset-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+    /* --- Subreddit chips --- */
+    .subreddit-chips {
+      display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center;
+      background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 0.5rem 0.625rem; min-height: 42px; cursor: text;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .subreddit-chips:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      background: var(--accent-dim); color: var(--accent); padding: 0.15rem 0.5rem 0.15rem 0.625rem;
+      border-radius: 100px; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500;
+      white-space: nowrap;
+    }
+    .chip-close {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      font-size: 0.85rem; line-height: 1; padding: 0 0.1rem; opacity: 0.6;
+      transition: opacity 0.15s;
+    }
+    .chip-close:hover { opacity: 1; }
+    .chip-input {
+      flex: 1; min-width: 80px; background: transparent; border: none;
+      color: var(--text-primary); font-family: var(--font-mono); font-size: 0.82rem;
+      outline: none; padding: 0.15rem 0;
+    }
+    .chip-input::placeholder { color: var(--text-muted); }
+    .chip-input:read-only { cursor: default; min-width: 0; width: 0; flex: 0; }
+
+    /* --- Mode toggle --- */
+    .mode-toggle { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .mode-btn {
+      padding: 0.875rem 1rem; border: 1px solid var(--border);
+      background: var(--bg-tertiary); border-radius: var(--radius); cursor: pointer;
+      color: var(--text-secondary); font-family: var(--font-heading); font-size: 0.85rem;
+      font-weight: 500; transition: all 0.2s; text-align: left;
+    }
+    .mode-btn:hover { border-color: var(--text-muted); }
+    .mode-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .mode-btn-title { font-weight: 600; margin-bottom: 0.25rem; }
+    .mode-btn-desc { font-size: 0.75rem; opacity: 0.7; line-height: 1.4; }
+
+    /* --- Run button --- */
+    .run-btn {
+      width: 100%; padding: 0.875rem; background: var(--accent); color: #0a0a0f;
+      font-family: var(--font-heading); font-weight: 600; font-size: 1rem;
+      border: none; border-radius: var(--radius); cursor: pointer; transition: background 0.2s;
+    }
+    .run-btn:hover { background: var(--accent-hover); }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* --- Progress --- */
+    .progress-container { margin-top: 1rem; display: none; }
+    .progress-container.visible { display: block; }
+    .progress-bar { height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease; }
+    .status-text { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem; }
+
+    /* --- Error --- */
+    .error-msg {
+      background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.3);
+      color: var(--error); padding: 0.75rem 1rem; border-radius: var(--radius);
+      font-family: var(--font-mono); font-size: 0.8rem; margin-top: 1rem; display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    /* --- Tabs --- */
+    .tabs-bar { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+    .tab-btn {
+      padding: 0.625rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-muted); font-family: var(--font-heading); font-size: 0.85rem;
+      font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .tab-btn:hover { color: var(--text-secondary); }
+    .tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* --- Post cards --- */
+    .post-card {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 0.75rem;
+      transition: border-color 0.2s;
+    }
+    .post-card:hover { border-color: var(--text-muted); }
+    .post-card-header { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 0.5rem; }
+    .post-title {
+      font-size: 0.95rem; font-weight: 600; line-height: 1.4; flex: 1;
+    }
+    .post-title a { color: var(--text-primary); text-decoration: none; }
+    .post-title a:hover { color: var(--accent); }
+    .score-pill {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      background: var(--accent-dim); color: var(--accent); padding: 0.2rem 0.6rem;
+      border-radius: 100px; font-family: var(--font-mono); font-size: 0.7rem;
+      font-weight: 500; white-space: nowrap; flex-shrink: 0;
+    }
+    .post-meta {
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted);
+      display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem;
+    }
+    .post-snippet {
+      color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5;
+      overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+
+    /* --- Post actions (✨ generate, ✕ skip, archive controls) --- */
+    .post-actions {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 0.4rem; margin-top: 0.75rem;
+    }
+    .post-action-btn {
+      background: var(--bg-tertiary); border: 1px solid var(--border);
+      color: var(--text-secondary); padding: 0.4rem 0.75rem; border-radius: var(--radius);
+      font-family: var(--font-mono); font-size: 0.72rem; cursor: pointer;
+      transition: all 0.15s; display: inline-flex; align-items: center; gap: 0.35rem;
+    }
+    .post-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .post-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .post-action-btn.primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .post-action-btn.danger:hover { border-color: var(--error); color: var(--error); }
+
+    /* --- Post AI panel (per-card response) --- */
+    .post-ai-panel {
+      margin-top: 0.75rem; border-top: 1px dashed var(--border); padding-top: 0.75rem;
+    }
+    .post-ai-panel-head {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; user-select: none;
+    }
+    .post-ai-panel-title {
+      font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--accent);
+    }
+    .post-ai-chevron { color: var(--text-muted); font-size: 0.75rem; transition: transform 0.2s; }
+    .post-ai-panel.collapsed .post-ai-chevron { transform: rotate(-90deg); }
+    .post-ai-body {
+      overflow: hidden; transition: max-height 0.25s ease; margin-top: 0.5rem;
+    }
+    .post-ai-panel.collapsed .post-ai-body { max-height: 0 !important; margin-top: 0; }
+    .post-ai-text {
+      background: var(--bg-tertiary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0.875rem 1rem;
+      font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.7;
+      white-space: pre-wrap; word-wrap: break-word; color: var(--text-primary);
+      min-height: 32px;
+    }
+    .post-ai-text.streaming::after {
+      content: '▍'; color: var(--accent); animation: blink 1s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+    .post-ai-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .archived-pill {
+      background: var(--bg-tertiary); color: var(--text-muted);
+      padding: 0.15rem 0.5rem; border-radius: 100px;
+      font-family: var(--font-mono); font-size: 0.65rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      border: 1px solid var(--border);
+    }
+
+    /* --- Load-more & global actions --- */
+    .load-more-btn {
+      width: 100%; padding: 0.75rem; background: var(--bg-tertiary);
+      border: 1px dashed var(--border); color: var(--text-secondary);
+      border-radius: var(--radius); cursor: pointer;
+      font-family: var(--font-mono); font-size: 0.78rem;
+      margin-top: 0.5rem; transition: all 0.15s;
+    }
+    .load-more-btn:hover { border-color: var(--accent); color: var(--accent); border-style: solid; }
+    .load-more-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .results-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.5rem; margin-bottom: 0.5rem;
+    }
+
+    /* --- Selection toolbar (active tab) --- */
+    .selection-toolbar {
+      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0.6rem 0.875rem;
+      margin-bottom: 0.75rem;
+    }
+    .selection-toolbar label.select-all {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      cursor: pointer; user-select: none;
+      font-family: var(--font-mono); font-size: 0.72rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); margin: 0; padding: 0;
+    }
+    .selection-info {
+      font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary);
+    }
+    .selection-info b { color: var(--accent); }
+    .selection-toolbar .brief-btn {
+      margin-left: auto; background: var(--accent-dim); border: 1px solid var(--accent);
+      color: var(--accent); padding: 0.5rem 0.875rem; border-radius: var(--radius);
+      font-family: var(--font-heading); font-weight: 500; font-size: 0.85rem;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .selection-toolbar .brief-btn:hover { background: var(--accent); color: #0a0a0f; }
+    .selection-toolbar .brief-btn:disabled {
+      opacity: 0.4; cursor: not-allowed; background: var(--bg-tertiary); color: var(--text-muted);
+    }
+    .selection-hint {
+      width: 100%; font-family: var(--font-mono); font-size: 0.68rem;
+      color: var(--text-muted); margin-top: -0.2rem;
+    }
+
+    .post-card-checkbox {
+      appearance: none; width: 18px; height: 18px;
+      border: 2px solid var(--border); border-radius: 4px;
+      background: var(--bg-tertiary); cursor: pointer; flex-shrink: 0;
+      position: relative; transition: all 0.15s; margin-top: 2px;
+    }
+    .post-card-checkbox:checked { background: var(--accent); border-color: var(--accent); }
+    .post-card-checkbox:checked::after {
+      content: ''; position: absolute; left: 4px; top: 1px;
+      width: 5px; height: 9px; border: solid #0a0a0f; border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    /* --- Disabled mode buttons (Темы / Цитаты) --- */
+    .mode-btn[data-disabled] {
+      opacity: 0.4; cursor: not-allowed; position: relative;
+    }
+    .mode-btn[data-disabled]:hover { border-color: var(--border); }
+    .mode-btn[data-disabled]::after {
+      content: 'скоро'; position: absolute; top: 0.5rem; right: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.06em;
+      color: var(--text-muted); text-transform: uppercase;
+    }
+
+    /* --- Topics / Batch --- */
+    .topics-box {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.25rem;
+    }
+    .topics-header {
+      font-family: var(--font-heading); font-weight: 600; font-size: 0.95rem;
+      color: var(--accent); margin-bottom: 1rem;
+    }
+    .topic-row {
+      display: flex; align-items: center; gap: 0.625rem;
+      padding: 0.4rem 0; cursor: pointer; user-select: none;
+    }
+    .topic-row:hover { opacity: 0.85; }
+    .topic-checkbox {
+      appearance: none; width: 18px; height: 18px; border: 2px solid var(--border);
+      border-radius: 4px; background: var(--bg-tertiary); cursor: pointer;
+      flex-shrink: 0; position: relative; transition: all 0.15s;
+    }
+    .topic-checkbox:checked {
+      background: var(--accent); border-color: var(--accent);
+    }
+    .topic-checkbox:checked::after {
+      content: ''; position: absolute; left: 4px; top: 1px;
+      width: 5px; height: 9px; border: solid #0a0a0f; border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+    .topic-label { font-size: 0.88rem; color: var(--text-primary); flex: 1; text-transform: none; letter-spacing: normal; font-family: var(--font-heading); }
+    .topic-count { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); text-transform: none; letter-spacing: normal; }
+    .batch-btn {
+      width: 100%; padding: 0.875rem; background: var(--accent); color: #0a0a0f;
+      font-family: var(--font-heading); font-weight: 600; font-size: 1rem;
+      border: none; border-radius: var(--radius); cursor: pointer;
+      transition: background 0.2s; margin-top: 1rem;
+    }
+    .batch-btn:hover { background: var(--accent-hover); }
+    .batch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .results-section { display: none; }
+    .results-section.visible { display: block; }
+
+    .empty-state { color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 2rem; }
+
+    /* --- Inline link / icon buttons --- */
+    .link-btn {
+      background: none; border: none; color: var(--text-secondary);
+      font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.06em; cursor: pointer; padding: 0.25rem 0.5rem;
+      transition: color 0.2s;
+    }
+    .link-btn:hover { color: var(--accent); }
+    .preset-tab-actions {
+      display: flex; align-items: center; gap: 0.25rem;
+      margin: 0.25rem 0 0.75rem; min-height: 22px;
+    }
+    .icon-btn {
+      background: none; border: 1px solid var(--border); color: var(--text-muted);
+      width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; padding: 0; transition: all 0.15s;
+    }
+    .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .preset-tab.add { color: var(--text-muted); }
+    .preset-tab.add:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* --- Topics editor --- */
+    .topics-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .topics-editor {
+      border-top: 1px dashed var(--border); margin-top: 0.75rem; padding-top: 0.75rem;
+      display: none;
+    }
+    .topics-editor.visible { display: block; }
+    .topic-edit-row {
+      background: var(--bg-tertiary); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 0.625rem 0.75rem; margin-bottom: 0.5rem;
+    }
+    .topic-edit-head {
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+    }
+    .topic-edit-head input {
+      flex: 1; background: var(--bg-secondary); border: 1px solid var(--border);
+      color: var(--text-primary); padding: 0.35rem 0.5rem; border-radius: 4px;
+      font-family: var(--font-heading); font-size: 0.85rem; outline: none;
+    }
+    .topic-edit-head input:focus { border-color: var(--accent); }
+    .query-list { display: flex; flex-direction: column; gap: 0.25rem; }
+    .query-item {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.3rem 0.5rem;
+    }
+    .query-item input {
+      flex: 1; background: transparent; border: none; color: var(--text-primary);
+      font-family: var(--font-mono); font-size: 0.78rem; outline: none;
+    }
+    .editor-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .editor-actions button {
+      background: var(--bg-tertiary); border: 1px solid var(--border);
+      color: var(--text-secondary); padding: 0.35rem 0.75rem; border-radius: 4px;
+      font-family: var(--font-mono); font-size: 0.7rem; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .editor-actions button:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* --- AI tab actions --- */
+    .ai-actions {
+      position: absolute; top: 0.75rem; right: 0.75rem;
+      display: flex; gap: 0.4rem;
+    }
+
+    /* --- Modal (preset editor) --- */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
+      display: none; align-items: center; justify-content: center; z-index: 100;
+      padding: 1rem;
+    }
+    .modal-backdrop.visible { display: flex; }
+    .modal {
+      background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.5rem; width: 100%; max-width: 480px;
+    }
+    .modal h3 {
+      font-family: var(--font-heading); font-size: 1rem; margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+
+    /* --- Responsive --- */
+    @media (max-width: 600px) {
+      #app { padding: 1rem; }
+      header h1 { font-size: 1.4rem; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .mode-toggle { grid-template-columns: 1fr; }
+      .preset-tabs { gap: 0.375rem; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Reddit <span>Content Intelligence</span></h1>
+      <p>Инструмент ищет обсуждения в Reddit и анализирует их через AI — находит боли аудитории, цитаты и идеи для контента</p>
+    </header>
+
+    <main>
+      <!-- API Keys -->
+      <section id="api-keys-section">
+        <div class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h2>Шаг 1: Ключ для AI-анализа</h2>
+          <span class="collapsible-chevron">&#9660;</span>
+        </div>
+        <div class="collapsible-body" id="keysBody">
+          <div class="field-group">
+            <label>Ключ Claude API</label>
+            <div class="field-row">
+              <input type="password" id="anthropicKey" placeholder="sk-ant-... (получить на console.anthropic.com/settings/keys)">
+              <span class="status-dot" id="anthropicDot"></span>
+            </div>
+            <div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.3rem;">Поиск Reddit работает бесплатно. Ключ нужен только для AI-анализа результатов.</div>
+          </div>
+          <button class="save-keys-btn" id="saveKeysBtn" onclick="saveKeys()">Сохранить ключи</button>
+        </div>
+      </section>
+
+      <!-- Search Params -->
+      <section id="search-params-section">
+        <!-- Subreddit presets + chips -->
+        <div class="field-group">
+          <label>Шаг 2: Где искать</label>
+          <div class="preset-tabs" id="presetTabs"></div>
+          <div class="preset-tab-actions" id="presetTabActions"></div>
+          <div class="subreddit-chips" id="chipsContainer" onclick="focusChipInput()">
+            <input type="text" class="chip-input" id="chipInput" placeholder="Введите сабреддит, нажмите Enter...">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label>Свой запрос (необязательно)</label>
+            <input type="text" id="queryInput" placeholder="напр. email deliverability issues">
+          </div>
+          <div class="field-group">
+            <label>Сортировка</label>
+            <select id="sortSelect">
+              <option value="relevance">По релевантности</option>
+              <option value="top">По рейтингу</option>
+              <option value="comments">По комментариям</option>
+              <option value="new">По дате</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Период</label>
+            <select id="timeframeSelect">
+              <option value="year">За год</option>
+              <option value="month">За месяц</option>
+              <option value="week">За неделю</option>
+              <option value="day">За день</option>
+              <option value="all">За всё время</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>Макс. постов</label>
+            <select id="maxPostsSelect">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Batch Topics -->
+      <section id="topics-section">
+        <div class="topics-box">
+          <div class="topics-toolbar">
+            <div class="topics-header" style="margin:0;">Шаг 3: Что искать</div>
+            <button class="link-btn" type="button" onclick="toggleTopicsEditor()">Редактировать</button>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:0.75rem;">Выберите категории тем. Инструмент пройдёт по всем запросам во всех сабреддитах и соберёт обсуждения.</div>
+          <div id="topicsCheckboxes"></div>
+          <div class="topics-editor" id="topicsEditor">
+            <div id="topicsEditorList"></div>
+            <div class="editor-actions">
+              <button type="button" onclick="addTopicCategory()">+ Категория</button>
+              <button type="button" onclick="resetTopicsToDefaults()">Сбросить к дефолтам Unione</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Mode Toggle -->
+      <section id="mode-section">
+        <label>Шаг 4: Что сделать с результатами</label>
+        <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:0.5rem;">Выберите режим. Сейчас в MVP активны только «Ответы» — Темы и Цитаты вернутся позже.</div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" data-mode="discuss" onclick="setMode(this)">
+            <div class="mode-btn-title">Ответы</div>
+            <div class="mode-btn-desc">Готовые экспертные комментарии для публикации в Reddit (нерекламные, от лица пользователя)</div>
+          </button>
+          <button class="mode-btn" data-mode="generate" data-disabled title="Скоро">
+            <div class="mode-btn-title">Темы</div>
+            <div class="mode-btn-desc">Идеи для блога, видео и рекламы на основе трендов Reddit</div>
+          </button>
+          <button class="mode-btn" data-mode="quotes" data-disabled title="Скоро">
+            <div class="mode-btn-title">Цитаты</div>
+            <div class="mode-btn-desc">20-30 реальных цитат аудитории — боли, фразы, язык для рекламы и копирайтинга</div>
+          </button>
+        </div>
+      </section>
+
+      <!-- Action -->
+      <section id="action-section">
+        <button class="run-btn" id="runBtn" onclick="findPosts()">Найти посты</button>
+        <div class="progress-container" id="progressContainer">
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="status-text" id="statusText"></div>
+        </div>
+        <div class="error-msg" id="errorMsg"></div>
+      </section>
+
+      <!-- Results -->
+      <section class="results-section" id="resultsSection">
+        <div class="results-toolbar">
+          <div class="tabs-bar" style="margin-bottom:0; flex:1;">
+            <button class="tab-btn active" data-tab="active" onclick="switchTab('active')">
+              Активные <span class="topic-count" id="activeCount">(0)</span>
+            </button>
+            <button class="tab-btn" data-tab="archive" onclick="switchTab('archive')">
+              Архив <span class="topic-count" id="archiveCount">(0)</span>
+            </button>
+          </div>
+        </div>
+        <div class="tab-content active" id="activeTab">
+          <div class="empty-state">Посты ещё не загружены</div>
+        </div>
+        <div class="tab-content" id="archiveTab">
+          <div class="empty-state">Архив пуст. Обработанные посты появятся здесь.</div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Preset editor modal -->
+    <div class="modal-backdrop" id="presetModal">
+      <div class="modal">
+        <h3 id="presetModalTitle">Новый пресет</h3>
+        <div class="field-group">
+          <label>Название</label>
+          <input type="text" id="presetModalLabel" placeholder="напр. SaaS-боли">
+        </div>
+        <div class="field-group">
+          <label>Сабреддиты (через запятую или Enter)</label>
+          <div class="subreddit-chips" id="presetModalChips" onclick="focusModalChipInput()">
+            <input type="text" class="chip-input" id="presetModalChipInput" placeholder="SaaS, EmailGeeks...">
+          </div>
+        </div>
+        <div class="editor-actions" style="justify-content:flex-end;">
+          <button type="button" onclick="closePresetModal()">Отмена</button>
+          <button type="button" onclick="savePresetFromModal()" style="color:var(--accent); border-color:var(--accent);">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Defaults ──
+    const DEFAULT_PRESETS = [
+      {
+        id: 'unione',
+        label: 'Unione',
+        subs: ['SaaS', 'EmailGeeks', 'EmailMarketing', 'startups', 'Entrepreneur', 'devops', 'webdev'],
+        builtin: true
+      },
+      {
+        id: 'custom',
+        label: 'Свои',
+        subs: [],
+        builtin: true
+      }
+    ];
+
+    const DEFAULT_TOPICS = [
+      {
+        id: 'esp-pain',
+        label: 'Боли с ESP',
+        queries: [
+          'SendGrid alternatives complaints',
+          'Email deliverability problems 2025',
+          'DMARC SPF DKIM setup problems',
+          'Emails going to spam'
+        ]
+      },
+      {
+        id: 'tech-pain',
+        label: 'Технические боли',
+        queries: [
+          'Transactional email API problems',
+          'Duplicate emails sent by mistake',
+          'Email infrastructure for SaaS'
+        ]
+      },
+      {
+        id: 'support-pain',
+        label: 'Боли с поддержкой',
+        queries: [
+          'SendGrid support terrible',
+          'ESP customer support experience'
+        ]
+      },
+      {
+        id: 'competitors',
+        label: 'Конкуренты',
+        queries: [
+          'SendGrid vs Mailgun vs alternatives',
+          'Best transactional email service',
+          'Switching email provider'
+        ]
+      },
+      {
+        id: 'deliverability',
+        label: 'Deliverability',
+        queries: [
+          'Gmail Yahoo requirements 2024 2025',
+          'Microsoft Outlook email rejection',
+          'Bulk sender requirements'
+        ]
+      }
+    ];
+
+    // ── State ──
+    const state = {
+      anthropicKey: '',
+      mode: 'discuss',                  // 'discuss' only active in MVP
+      activePreset: 'unione',
+      isRunning: false,
+      briefRunning: false,              // отдельный флаг — генерация контент-брифа
+      posts: new Map(),                 // postId -> post object (with archived, deleted, aiText)
+      activeIds: [],                    // post IDs shown in active tab (insertion order)
+      seenIds: new Set(),               // archived ∪ deleted — derived dedup index
+      deletedIds: new Set(),            // ID удалённых из архива (никогда не возвращаются)
+      selectedPostIds: new Set(),       // ID выделенных через чекбокс для генерации брифа
+      topicAfterCursors: {},            // {query: afterToken} for paginated re-fetch
+      generatingPostId: null,           // id of post currently streaming AI
+      lastQueryLabel: '',
+      presets: [],
+      topics: [],
+      editingPresetId: null
+    };
+
+    const PAGE_SIZE = 10;
+    const FETCH_LIMIT_PER_QUERY = 25;   // запас на 2-3 пачки
+
+    const LS_KEYS = {
+      keys: 'reddit-intel-keys',
+      presets: 'reddit-intel-presets',
+      topics: 'reddit-intel-topics',
+      archive: 'reddit-intel-archive',
+      deleted: 'reddit-intel-deleted'
+    };
+
+    // ── Persistence: presets & topics ──
+    function loadPresetsFromStorage() {
+      try {
+        const raw = localStorage.getItem(LS_KEYS.presets);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (Array.isArray(saved) && saved.length) return saved;
+        }
+      } catch {}
+      return JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+    }
+    function savePresetsToStorage() {
+      localStorage.setItem(LS_KEYS.presets, JSON.stringify(state.presets));
+    }
+    function loadTopicsFromStorage() {
+      try {
+        const raw = localStorage.getItem(LS_KEYS.topics);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (Array.isArray(saved) && saved.length) return saved;
+        }
+      } catch {}
+      return JSON.parse(JSON.stringify(DEFAULT_TOPICS));
+    }
+    function saveTopicsToStorage() {
+      localStorage.setItem(LS_KEYS.topics, JSON.stringify(state.topics));
+    }
+
+    // ── Persistent archive ──
+    function loadArchiveFromStorage() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(LS_KEYS.archive) || '[]');
+        if (Array.isArray(arr)) {
+          arr.forEach(p => {
+            if (p && p.id) {
+              p.archived = true;
+              p.deleted = false;
+              state.posts.set(p.id, p);
+            }
+          });
+        }
+      } catch (e) { console.warn('archive parse failed', e); }
+      try {
+        const ids = JSON.parse(localStorage.getItem(LS_KEYS.deleted) || '[]');
+        if (Array.isArray(ids)) ids.forEach(id => state.deletedIds.add(id));
+      } catch (e) { console.warn('deleted parse failed', e); }
+      rebuildSeenIds();
+    }
+
+    function saveArchiveToStorage() {
+      const archived = [];
+      state.posts.forEach(p => {
+        if (p.archived && !p.deleted) archived.push(p);
+      });
+      try {
+        localStorage.setItem(LS_KEYS.archive, JSON.stringify(archived));
+        localStorage.setItem(LS_KEYS.deleted, JSON.stringify([...state.deletedIds]));
+      } catch (e) { console.warn('archive save failed', e); }
+    }
+
+    function rebuildSeenIds() {
+      state.seenIds.clear();
+      state.posts.forEach((p, id) => state.seenIds.add(id));
+      state.deletedIds.forEach(id => state.seenIds.add(id));
+    }
+
+    // ── DOM refs ──
+    const $ = s => document.querySelector(s);
+    const $$ = s => document.querySelectorAll(s);
+
+    // ── Utilities ──
+    function escapeHtml(str) {
+      if (!str) return '';
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    function truncate(str, len) {
+      if (!str) return '';
+      return str.length > len ? str.slice(0, len) + '...' : str;
+    }
+
+    function cleanSubreddit(input) {
+      return input.replace(/^\/?(r\/)?/, '').trim();
+    }
+
+    function relativeTime(dateVal) {
+      if (!dateVal) return '';
+      let ts;
+      if (typeof dateVal === 'string') ts = new Date(dateVal).getTime() / 1000;
+      else if (dateVal > 1e12) ts = dateVal / 1000;
+      else ts = dateVal;
+      const diff = Math.floor((Date.now() / 1000) - ts);
+      if (diff < 0) return 'just now';
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      if (diff < 2592000) return Math.floor(diff / 86400) + 'd ago';
+      if (diff < 31536000) return Math.floor(diff / 2592000) + 'mo ago';
+      return Math.floor(diff / 31536000) + 'y ago';
+    }
+
+    function getRedditUrl(post) {
+      if (post.permalink) return 'https://www.reddit.com' + post.permalink;
+      if (post.url && post.url.includes('reddit.com')) return post.url;
+      return post.url || '#';
+    }
+
+    // Normalize Reddit API post to internal format
+    function normalizePost(p) {
+      return {
+        id: p.id || (p.name ? p.name.replace(/^t3_/, '') : ''),
+        title: p.title || '',
+        url: p.url || '',
+        permalink: p.permalink || '',
+        subreddit: p.subreddit || '',
+        author: p.author || '',
+        score: p.score ?? p.ups ?? 0,
+        num_comments: p.num_comments ?? 0,
+        selftext: p.selftext || '',
+        created_at: p.created_utc || '',
+        is_self: p.is_self ?? false,
+        // mutable per-post state (filled later)
+        archived: false,
+        deleted: false,
+        aiText: '',
+        aiPanelCollapsed: false,
+      };
+    }
+
+    function engagementScore(p) {
+      return (p.score || 0) + (p.num_comments || 0) * 2;
+    }
+
+    // ── Preset Tabs + Chips ──
+    function renderPresetTabs() {
+      const container = $('#presetTabs');
+      const tabs = state.presets.map(p =>
+        `<button class="preset-tab${p.id === state.activePreset ? ' active' : ''}" data-preset="${p.id}" onclick="setPreset('${p.id}')">${escapeHtml(p.label)}</button>`
+      );
+      tabs.push(`<button class="preset-tab add" type="button" onclick="openPresetModal(null)" title="Новый пресет">+</button>`);
+      container.innerHTML = tabs.join('');
+      renderPresetTabActions();
+    }
+
+    function renderPresetTabActions() {
+      const actions = $('#presetTabActions');
+      const preset = state.presets.find(p => p.id === state.activePreset);
+      if (!preset || preset.builtin) {
+        actions.innerHTML = '';
+        return;
+      }
+      actions.innerHTML = `
+        <button class="icon-btn" type="button" onclick="openPresetModal('${preset.id}')" title="Редактировать">✎</button>
+        <button class="icon-btn" type="button" onclick="deletePreset('${preset.id}')" title="Удалить">×</button>
+      `;
+    }
+
+    function setPreset(presetId) {
+      state.activePreset = presetId;
+      $$('.preset-tab').forEach(b => b.classList.toggle('active', b.dataset.preset === presetId));
+      renderPresetTabActions();
+
+      const preset = state.presets.find(p => p.id === presetId);
+      const input = $('#chipInput');
+
+      // Clear existing chips
+      clearChips();
+
+      if (!preset) return;
+
+      if (preset.id === 'custom') {
+        input.readOnly = false;
+        input.placeholder = 'Введите сабреддит, нажмите Enter...';
+        input.focus();
+        return;
+      }
+
+      // Saved preset — fill chips
+      preset.subs.forEach(sub => addChip(sub, false));
+      // Builtin Unione: read-only. Custom-saved presets: editable inline (chips stay, but typing adds)
+      if (preset.builtin) {
+        input.readOnly = true;
+        input.placeholder = '';
+      } else {
+        input.readOnly = false;
+        input.placeholder = 'Добавить сабреддит...';
+      }
+    }
+
+    function addChip(text, focusInput = true) {
+      const sub = cleanSubreddit(text);
+      if (!sub) return;
+      // Avoid duplicates
+      const existing = getSubreddits();
+      if (existing.map(s => s.toLowerCase()).includes(sub.toLowerCase())) return;
+
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.sub = sub;
+      chip.innerHTML = `r/${escapeHtml(sub)}<button class="chip-close" onclick="removeChip(this)" title="Удалить">&times;</button>`;
+
+      const input = $('#chipInput');
+      input.parentNode.insertBefore(chip, input);
+      if (focusInput) input.focus();
+    }
+
+    function removeChip(closeBtn) {
+      closeBtn.parentElement.remove();
+    }
+
+    function clearChips() {
+      const container = $('#chipsContainer');
+      container.querySelectorAll('.chip').forEach(c => c.remove());
+    }
+
+    function getSubreddits() {
+      return Array.from($('#chipsContainer').querySelectorAll('.chip')).map(c => c.dataset.sub);
+    }
+
+    function focusChipInput() {
+      const input = $('#chipInput');
+      if (!input.readOnly) input.focus();
+    }
+
+    function initChipsInput() {
+      const input = $('#chipInput');
+
+      input.addEventListener('keydown', e => {
+        if (input.readOnly) return;
+
+        if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
+          e.preventDefault();
+          const val = input.value.replace(/,/g, '').trim();
+          addChip(val);
+          input.value = '';
+        }
+
+        if (e.key === 'Backspace' && !input.value) {
+          const chips = $('#chipsContainer').querySelectorAll('.chip');
+          if (chips.length > 0) chips[chips.length - 1].remove();
+        }
+
+        if (e.key === 'Enter' && !input.value && !state.isRunning) {
+          // Allow Enter on empty input to trigger run if subreddits exist
+          const subs = getSubreddits();
+          const query = $('#queryInput').value.trim();
+          if (subs.length && query) runResearch();
+        }
+      });
+
+      // Handle paste with commas
+      input.addEventListener('paste', e => {
+        if (input.readOnly) return;
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        text.split(/[,\s]+/).forEach(part => {
+          const sub = part.trim();
+          if (sub) addChip(sub, false);
+        });
+      });
+    }
+
+    // ── Save / Load Keys ──
+    function saveKeys() {
+      localStorage.setItem('reddit-intel-keys', JSON.stringify({ anthropicKey: state.anthropicKey }));
+      const btn = $('#saveKeysBtn');
+      btn.textContent = 'Сохранено \u2713';
+      setTimeout(() => { btn.textContent = 'Сохранить ключи'; }, 2000);
+    }
+
+    function loadKeys() {
+      try {
+        const raw = localStorage.getItem('reddit-intel-keys');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data.anthropicKey) {
+          state.anthropicKey = data.anthropicKey;
+          $('#anthropicKey').value = data.anthropicKey;
+          $('#anthropicDot').classList.add('active');
+        }
+        updateRunBtn();
+      } catch {}
+    }
+
+    // ── UI helpers ──
+    function toggleCollapsible(header) {
+      const body = header.nextElementSibling;
+      const chevron = header.querySelector('.collapsible-chevron');
+      body.classList.toggle('collapsed');
+      chevron.classList.toggle('collapsed');
+    }
+
+    function setMode(btn) {
+      if (btn.hasAttribute('data-disabled')) return; // Темы/Цитаты выключены в MVP
+      state.mode = btn.dataset.mode;
+      $$('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function switchTab(tab) {
+      $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      $('#activeTab').classList.toggle('active', tab === 'active');
+      $('#archiveTab').classList.toggle('active', tab === 'archive');
+    }
+
+    function showProgress(pct, text) {
+      $('#progressContainer').classList.add('visible');
+      $('#progressFill').style.width = pct + '%';
+      $('#statusText').textContent = text;
+    }
+
+    function hideProgress() {
+      $('#progressContainer').classList.remove('visible');
+      $('#progressFill').style.width = '0%';
+    }
+
+    function showError(msg) {
+      const el = $('#errorMsg');
+      el.textContent = msg;
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 8000);
+    }
+
+    function updateRunBtn() {
+      const btn = $('#runBtn');
+      const queries = collectActiveQueries();
+      if (state.isRunning) {
+        btn.disabled = true;
+        btn.textContent = 'Работаю...';
+        return;
+      }
+      btn.disabled = queries.length === 0;
+      btn.textContent = queries.length
+        ? `Найти посты (${queries.length} ${queries.length === 1 ? 'запрос' : 'запросов'})`
+        : 'Найти посты';
+    }
+
+    // Returns ordered list of queries to run:
+    // — manual query (если непустой) перебивает выбранные темы
+    // — иначе берём все галочки в чекбоксах тем
+    function collectActiveQueries() {
+      const manual = ($('#queryInput')?.value || '').trim();
+      if (manual) return [manual];
+      return getSelectedQueries();
+    }
+
+    // ── API calls ──
+    async function fetchWithTimeout(url, options, timeout = 30000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        if (!res.ok) {
+          let msg;
+          try {
+            const body = await res.json();
+            msg = body.error?.message || body.message || JSON.stringify(body);
+          } catch { msg = 'HTTP ' + res.status; }
+          throw new Error(msg);
+        }
+        return await res.json();
+      } finally { clearTimeout(timer); }
+    }
+
+    async function searchSubreddit(subreddit, query, sort, timeframe, limit) {
+      // Reddit caps a single page at 100. Paginate only if we still need more.
+      const allPosts = [];
+      let after = null;
+      const MAX_PAGES = 4;
+      for (let i = 0; i < MAX_PAGES; i++) {
+        const remaining = limit - allPosts.length;
+        if (remaining <= 0) break;
+        const pageLimit = Math.min(100, remaining);
+        const params = new URLSearchParams({ subreddit, q: query, sort, t: timeframe, limit: String(pageLimit) });
+        if (after) params.set('after', after);
+        const data = await fetchWithTimeout('/api/search?' + params, {});
+        const raw = (data?.data?.children || []).map(c => c.data);
+        if (!raw.length) break;
+        for (const p of raw) allPosts.push(normalizePost(p));
+        after = data?.data?.after;
+        if (!after) break;
+      }
+      return allPosts.slice(0, limit);
+    }
+
+    async function searchMultipleSubreddits(subreddits, query, sort, timeframe, totalLimit) {
+      // Reddit supports searching multiple subs in one request: sub1+sub2+sub3
+      const combined = subreddits.join('+');
+      showProgress(15, `Поиск во всех сабреддитах разом...`);
+      try {
+        return await searchSubreddit(combined, query, sort, timeframe, totalLimit);
+      } catch (err) {
+        console.warn('Combined search failed:', err.message);
+        return [];
+      }
+    }
+
+    async function getPostComments(postUrl) {
+      const match = postUrl.match(/\/comments\/([a-z0-9]+)/i);
+      if (!match) throw new Error('Cannot extract post ID from URL: ' + postUrl);
+      const params = new URLSearchParams({ article_id: match[1] });
+      return await fetchWithTimeout('/api/comments?' + params, {});
+    }
+
+    const CLAUDE_MODEL = 'claude-sonnet-4-6';
+
+    async function callClaudeStream(systemPrompt, userMessage, onChunk) {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': state.anthropicKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: CLAUDE_MODEL,
+          max_tokens: 4000,
+          stream: true,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }]
+        })
+      });
+
+      if (!response.ok) {
+        let msg;
+        try {
+          const body = await response.json();
+          msg = body.error?.message || body.message || JSON.stringify(body);
+        } catch { msg = 'HTTP ' + response.status; }
+        throw new Error(msg);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE events separated by \n\n; each has "event: <type>\ndata: {...}"
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const evt of events) {
+          const dataLine = evt.split('\n').find(l => l.startsWith('data: '));
+          if (!dataLine) continue;
+          const payload = dataLine.slice(6).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const data = JSON.parse(payload);
+            if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
+              const txt = data.delta.text || '';
+              if (txt) {
+                fullText += txt;
+                onChunk(fullText);
+              }
+            } else if (data.type === 'message_stop') {
+              // finished
+            } else if (data.type === 'error') {
+              throw new Error(data.error?.message || 'Stream error');
+            }
+          } catch (err) {
+            if (err instanceof SyntaxError) continue; // skip malformed chunk
+            throw err;
+          }
+        }
+      }
+
+      return fullText;
+    }
+
+    // ── Prompt builders ──
+    function serializePosts(posts, extendedComments = false) {
+      const commentLimit = extendedComments ? 10 : 5;
+      const commentTruncate = extendedComments ? 800 : 300;
+
+      return posts.map((item, i) => {
+        const p = item.post || item;
+        const comments = (item.comments || [])
+          .sort((a, b) => (b.score || 0) - (a.score || 0))
+          .slice(0, commentLimit);
+        let t = `\n--- POST ${i + 1} ---\n`;
+        t += `Title: ${p.title}\n`;
+        t += `Score: ${p.score || 0} | Comments: ${p.num_comments || 0}\n`;
+        t += `Subreddit: r/${p.subreddit}\n`;
+        t += `URL: ${getRedditUrl(p)}\n`;
+        if (p.selftext) t += `Content: ${truncate(p.selftext, 500)}\n`;
+        if (comments.length) {
+          t += `\nTop Comments:\n`;
+          comments.forEach((c, j) => {
+            const body = c.body || c.selftext || '';
+            t += `  ${j + 1}. [score: ${c.score || 0}] ${truncate(body, commentTruncate)}\n`;
+          });
+        }
+        return t;
+      }).join('\n');
+    }
+
+    function buildDiscussPrompt(enrichedPosts, subreddits, query) {
+      const subList = Array.isArray(subreddits) ? subreddits.join(', r/') : subreddits;
+      const system = `You are a knowledgeable community member and subject-matter expert.
+Your job is to analyze Reddit discussions and craft genuine, helpful responses.
+
+CRITICAL RULES:
+- Write responses that sound like a real, helpful Redditor — NOT a brand or marketer
+- NEVER mention any products, brands, services, or links
+- NEVER be promotional or salesy in any way — Reddit communities hate this and will downvote/ban
+- Be conversational, authentic, and add real value from personal experience perspective
+- Use Reddit-appropriate tone: casual but knowledgeable
+- Each response should be 150-200 words, ready to copy-paste into Reddit
+- Write in the same language as the posts`;
+
+      const user = `Here are Reddit posts from r/${subList} about "${query}":\n${serializePosts(enrichedPosts)}
+
+For each post, provide:
+1. **What they really need**: Brief analysis of the core pain/question (2-3 sentences)
+2. **Expert response**: A ready-to-post Reddit comment that genuinely helps (150-200 words). Be specific, share actionable advice, and sound like a real person — not an AI or a marketer.
+
+Format with clear sections per post. Use markdown.`;
+
+      return { system, user };
+    }
+
+    function buildGeneratePrompt(posts, subreddits, query) {
+      const subList = Array.isArray(subreddits) ? subreddits.join(', r/') : subreddits;
+      const system = `You are a content strategist analyzing online community discussions.
+Identify trends, pain points, and content opportunities from real conversations.
+Focus on genuine audience language and needs — no corporate jargon.
+Write in the same language as the posts.`;
+
+      const postsData = posts.map(p => `- "${p.title}" (score: ${p.score || 0}, comments: ${p.num_comments || 0}, subreddit: r/${p.subreddit})`).join('\n');
+
+      const user = `Here are trending Reddit posts from r/${subList} about "${query}":\n\n${postsData}\n\nBased on these trends, generate:
+1. **5 blog post / article ideas** — with suggested headline and one-line pitch
+2. **5 short-form content ideas** — for Reels, TikTok, Shorts (with hook)
+3. **3 content angles** — based on pain points you see in this audience
+4. **Top 5 exact phrases** — from this audience to use in copy and headlines
+
+For each idea, add one line explaining why it resonates with this audience.`;
+
+      return { system, user };
+    }
+
+    function buildExtractQuotesPrompt(enrichedPosts, subreddits, query) {
+      const subList = Array.isArray(subreddits) ? subreddits.join(', r/') : subreddits;
+      const system = `You are a research analyst specializing in audience language mining.
+Your job is to extract REAL quotes and phrases from online discussions — the exact words people use when describing their problems, frustrations, and needs.
+These quotes will be used for marketing copy, headlines, hooks, and customer research.
+Accuracy matters: only use text that actually appears in the provided data. Do not invent quotes.`;
+
+      const user = `Here are Reddit posts and comments from r/${subList} about "${query}":\n${serializePosts(enrichedPosts, true)}
+
+Your task:
+
+## 1. QUOTES (20-30 items)
+Extract 20-30 direct quotes from the posts and comments above. For each quote:
+- **Quote**: The exact text (or close paraphrase if quote is too long — keep the key phrasing)
+- **Subreddit**: Which subreddit it came from
+- **Context**: One-line explanation of what they were discussing
+
+Focus on quotes that express:
+- Pain points and frustrations (especially with tools/services)
+- Specific complaints (naming products, features, or processes)
+- Emotional language ("I'm so tired of...", "It's insane that...", "I wish...")
+- Questions that reveal unmet needs
+
+## 2. RECURRING THEMES
+Group the quotes into 3-5 theme categories (e.g., "Deliverability frustration", "Pricing complaints", "Migration pain", etc.)
+For each theme, list how many quotes fall into it and summarize the pattern in 1-2 sentences.
+
+## 3. POWER PHRASES
+List the top 10 most impactful phrases or sentence fragments from the data — the ones that would work as headlines, hooks, or ad copy. Rank by emotional impact.
+
+## 4. AUDIENCE LANGUAGE PATTERNS
+Describe in 3-5 bullet points how this audience talks about their problems:
+- What words/metaphors do they use?
+- What tone do they have (angry, resigned, hopeful)?
+- What do they compare things to?
+
+Format everything in clean markdown, ready to copy.`;
+
+      return { system, user };
+    }
+
+    // ── Single-post discuss prompt ──
+    function buildSinglePostDiscussPrompt(post, comments) {
+      const system = `You are a knowledgeable community member and subject-matter expert.
+Your job is to read one Reddit post (with top comments) and craft a genuine, helpful Reddit-style response.
+
+CRITICAL RULES:
+- Sound like a real, helpful Redditor — NOT a brand or marketer
+- NEVER mention any products, brands, services, or links
+- NEVER be promotional or salesy — Reddit hates this
+- Be conversational, authentic, useful from a personal-experience angle
+- Tone: casual but knowledgeable
+- Length: 150–200 words, ready to copy-paste
+- Write in the same language as the post`;
+
+      const topComments = (comments || [])
+        .slice()
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .slice(0, 6);
+
+      let body = `Subreddit: r/${post.subreddit}\nTitle: ${post.title}\nScore: ${post.score || 0} · Comments: ${post.num_comments || 0}\nURL: ${getRedditUrl(post)}\n`;
+      if (post.selftext) body += `\nPost body:\n${truncate(post.selftext, 1500)}\n`;
+      if (topComments.length) {
+        body += `\nTop comments:\n`;
+        topComments.forEach((c, i) => {
+          body += `${i + 1}. [score ${c.score || 0}] ${truncate(c.body || '', 600)}\n`;
+        });
+      }
+
+      const user = `Here is one Reddit post and its top comments:\n\n${body}\n\nProvide:
+1. **What they really need**: 2–3 sentences on the core pain or question.
+2. **Expert response**: a ready-to-post Reddit comment (150–200 words). Specific, actionable, human-sounding.
+
+Format with clear headings. Use markdown.`;
+
+      return { system, user };
+    }
+
+    // ── Card rendering ──
+    function postCardHtml(p, opts = {}) {
+      const isArchived = opts.archived || false;
+      const aiHtml = p.aiText
+        ? `
+          <div class="post-ai-panel${p.aiPanelCollapsed ? ' collapsed' : ''}" data-ai-panel="${p.id}">
+            <div class="post-ai-panel-head" onclick="togglePostAiPanel('${p.id}')">
+              <span class="post-ai-panel-title">AI-ответ</span>
+              <span class="post-ai-chevron">▼</span>
+            </div>
+            <div class="post-ai-body">
+              <div class="post-ai-text" data-ai-text="${p.id}">${escapeHtml(p.aiText)}</div>
+              <div class="post-ai-actions">
+                <button class="post-action-btn" type="button" onclick="copyAiText('${p.id}')">Копировать</button>
+                <button class="post-action-btn" type="button" onclick="regenerateAi('${p.id}')">Перегенерировать</button>
+                <button class="post-action-btn" type="button" onclick="downloadAiAnswer('${p.id}')">Скачать .md</button>
+              </div>
+            </div>
+          </div>` : '';
+
+      let actions;
+      if (isArchived) {
+        actions = `
+          <div class="post-actions">
+            <button class="post-action-btn" type="button" onclick="unarchivePost('${p.id}')" title="Вернуть в активные">↩ Вернуть</button>
+            <button class="post-action-btn danger" type="button" onclick="deletePostFromArchive('${p.id}')" title="Удалить из архива">🗑 Удалить</button>
+          </div>`;
+      } else {
+        const generating = state.generatingPostId === p.id;
+        const hasAi = !!p.aiText;
+        actions = `
+          <div class="post-actions">
+            ${p.archived ? '<span class="archived-pill">в архиве</span>' : ''}
+            <button class="post-action-btn" type="button" onclick="skipPost('${p.id}')" ${generating ? 'disabled' : ''} title="Пропустить (в архив без AI)">✕ Пропустить</button>
+            <button class="post-action-btn primary post-ai-trigger" type="button" onclick="${hasAi ? `togglePostAiPanel('${p.id}')` : `generateAiForPost('${p.id}')`}" ${generating ? 'disabled' : ''}>
+              ${generating ? '… генерирую' : (hasAi ? '✨ Показать ответ' : '✨ Сгенерировать ответ')}
+            </button>
+          </div>`;
+      }
+
+      const checkbox = !isArchived
+        ? `<input type="checkbox" class="post-card-checkbox" data-select-id="${p.id}"${state.selectedPostIds.has(p.id) ? ' checked' : ''} onchange="togglePostSelection('${p.id}')" title="Выделить для контент-брифа">`
+        : '';
+      return `
+        <div class="post-card" data-post-id="${p.id}">
+          <div class="post-card-header">
+            ${checkbox}
+            <div class="post-title"><a href="${escapeHtml(getRedditUrl(p))}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a></div>
+            <span class="score-pill">${p.score || 0}</span>
+          </div>
+          <div class="post-meta">
+            <span>r/${escapeHtml(p.subreddit)}</span>
+            ${p.author ? `<span>u/${escapeHtml(p.author)}</span>` : ''}
+            <span>${p.num_comments || 0} комм.</span>
+            <span>${relativeTime(p.created_at)}</span>
+          </div>
+          ${p.selftext ? `<div class="post-snippet">${escapeHtml(truncate(p.selftext, 200))}</div>` : ''}
+          ${aiHtml}
+          ${actions}
+        </div>
+      `;
+    }
+
+    function renderActivePosts() {
+      const container = $('#activeTab');
+      const visible = state.activeIds
+        .map(id => state.posts.get(id))
+        .filter(p => p && !p.deleted);
+
+      $('#activeCount').textContent = `(${visible.filter(p => !p.archived).length})`;
+
+      if (!visible.length) {
+        container.innerHTML = '<div class="empty-state">Посты ещё не загружены. Нажмите «Найти посты».</div>';
+        return;
+      }
+
+      // Какие из видимых сейчас выделены чекбоксами
+      const visibleIds = visible.map(p => p.id);
+      const selectedVisible = visibleIds.filter(id => state.selectedPostIds.has(id));
+      const allSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+      const briefDisabled = state.briefRunning || state.isRunning || !state.anthropicKey || selectedVisible.length === 0;
+
+      const toolbar = `
+        <div class="selection-toolbar">
+          <label class="select-all">
+            <input type="checkbox" class="post-card-checkbox" id="selectAllCb" ${allSelected ? 'checked' : ''} onchange="toggleSelectAll()">
+            Выделить все
+          </label>
+          <span class="selection-info">Выделено: <b>${selectedVisible.length}</b></span>
+          <button class="brief-btn" type="button" onclick="downloadContentBrief()" ${briefDisabled ? 'disabled' : ''}>
+            ${state.briefRunning ? 'Генерирую…' : `📄 Скачать материал для контента (${selectedVisible.length})`}
+          </button>
+          <div class="selection-hint">
+            Один Claude-запрос на каждый выделенный пост. Оптимально 5–15 за раз.
+          </div>
+        </div>
+      `;
+
+      const cards = visible.map(p => postCardHtml(p, { archived: false })).join('');
+      const disableLoadMore = state.isRunning || state.briefRunning;
+      const moreBtn = `<button class="load-more-btn" type="button" onclick="loadMorePosts()" ${disableLoadMore ? 'disabled' : ''}>${state.isRunning ? 'Загрузка...' : `Загрузить ещё ${PAGE_SIZE}`}</button>`;
+      container.innerHTML = toolbar + cards + moreBtn;
+    }
+
+    function togglePostSelection(postId) {
+      if (state.selectedPostIds.has(postId)) state.selectedPostIds.delete(postId);
+      else state.selectedPostIds.add(postId);
+      // Обновляем только тулбар и select-all, без ререндера всей вкладки
+      updateSelectionToolbar();
+    }
+
+    function toggleSelectAll() {
+      const visibleIds = state.activeIds
+        .map(id => state.posts.get(id))
+        .filter(p => p && !p.deleted)
+        .map(p => p.id);
+      const allSelected = visibleIds.length > 0 && visibleIds.every(id => state.selectedPostIds.has(id));
+      if (allSelected) visibleIds.forEach(id => state.selectedPostIds.delete(id));
+      else visibleIds.forEach(id => state.selectedPostIds.add(id));
+      // Полный рендер для синхронизации чекбоксов на карточках
+      renderActivePosts();
+    }
+
+    function updateSelectionToolbar() {
+      const visibleIds = state.activeIds
+        .map(id => state.posts.get(id))
+        .filter(p => p && !p.deleted)
+        .map(p => p.id);
+      const selectedVisible = visibleIds.filter(id => state.selectedPostIds.has(id));
+      const allSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+      const info = document.querySelector('.selection-info b');
+      if (info) info.textContent = String(selectedVisible.length);
+      const sa = $('#selectAllCb');
+      if (sa) sa.checked = allSelected;
+      const btn = document.querySelector('.brief-btn');
+      if (btn) {
+        const disabled = state.briefRunning || state.isRunning || !state.anthropicKey || selectedVisible.length === 0;
+        btn.disabled = disabled;
+        btn.textContent = state.briefRunning ? 'Генерирую…' : `📄 Скачать материал для контента (${selectedVisible.length})`;
+      }
+    }
+
+    function renderArchivePosts() {
+      const container = $('#archiveTab');
+      const archived = [];
+      state.posts.forEach(p => {
+        if (p.archived && !p.deleted) archived.push(p);
+      });
+      $('#archiveCount').textContent = `(${archived.length})`;
+
+      if (!archived.length) {
+        container.innerHTML = '<div class="empty-state">Архив пуст. Обработанные посты появятся здесь.</div>';
+        return;
+      }
+      container.innerHTML = archived.map(p => postCardHtml(p, { archived: true })).join('');
+    }
+
+    function rerenderCard(postId) {
+      const post = state.posts.get(postId);
+      if (!post) return;
+      // Re-render in active tab if present
+      const activeCard = document.querySelector(`#activeTab [data-post-id="${postId}"]`);
+      if (activeCard) {
+        activeCard.outerHTML = postCardHtml(post, { archived: false });
+      }
+      const archCard = document.querySelector(`#archiveTab [data-post-id="${postId}"]`);
+      if (archCard) {
+        archCard.outerHTML = postCardHtml(post, { archived: true });
+      }
+    }
+
+    function togglePostAiPanel(postId) {
+      const post = state.posts.get(postId);
+      if (!post) return;
+      post.aiPanelCollapsed = !post.aiPanelCollapsed;
+      document.querySelectorAll(`[data-ai-panel="${postId}"]`).forEach(el => {
+        el.classList.toggle('collapsed', post.aiPanelCollapsed);
+      });
+    }
+
+    async function copyAiText(postId) {
+      const post = state.posts.get(postId);
+      if (!post?.aiText) return;
+      try {
+        await navigator.clipboard.writeText(post.aiText);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = post.aiText; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      // Cheap visual feedback — flash the buttons
+      document.querySelectorAll(`[data-post-id="${postId}"] .post-ai-actions button`).forEach(b => {
+        if (b.textContent === 'Копировать') {
+          b.textContent = 'Скопировано!';
+          setTimeout(() => { b.textContent = 'Копировать'; }, 1500);
+        }
+      });
+    }
+
+    function downloadAiAnswer(postId) {
+      const post = state.posts.get(postId);
+      if (!post?.aiText) return;
+      const slug = post.title.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+      const md = `# ${post.title}\n\n${getRedditUrl(post)}\n\n---\n\n${post.aiText}`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
+      a.download = `reddit-answer_${slug}_${stamp}.md`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function skipPost(postId) {
+      const post = state.posts.get(postId);
+      if (!post || state.generatingPostId === postId) return;
+      post.archived = true;
+      state.seenIds.add(postId);
+      saveArchiveToStorage();
+      renderActivePosts();
+      renderArchivePosts();
+    }
+
+    function unarchivePost(postId) {
+      const post = state.posts.get(postId);
+      if (!post) return;
+      post.archived = false;
+      // ID остаётся в seenIds — пост помечен как «уже видели», в Reddit-выдачу повторно не придёт.
+      // Этой сессии достаточно, что мы вернули его в активные.
+      if (!state.activeIds.includes(postId)) state.activeIds.unshift(postId);
+      saveArchiveToStorage();
+      renderActivePosts();
+      renderArchivePosts();
+    }
+
+    function deletePostFromArchive(postId) {
+      const post = state.posts.get(postId);
+      if (!post) return;
+      if (!confirm(`Удалить пост "${truncate(post.title, 60)}" из архива? Он больше не будет возвращаться в выдаче.`)) return;
+      post.deleted = true;
+      state.deletedIds.add(postId);
+      state.posts.delete(postId);
+      state.seenIds.add(postId);
+      saveArchiveToStorage();
+      renderActivePosts();
+      renderArchivePosts();
+    }
+
+    function regenerateAi(postId) {
+      const post = state.posts.get(postId);
+      if (!post) return;
+      post.aiText = '';
+      // archived flag оставляем — пост уже был обработан
+      generateAiForPost(postId);
+    }
+
+    async function generateAiForPost(postId) {
+      if (state.generatingPostId) {
+        showError('Сначала дождитесь окончания текущей генерации.');
+        return;
+      }
+      const post = state.posts.get(postId);
+      if (!post) return;
+      if (!state.anthropicKey) {
+        showError('Введите ключ Claude в Шаге 1.');
+        return;
+      }
+      state.generatingPostId = postId;
+      post.aiText = ''; // start fresh
+      post.aiPanelCollapsed = false;
+      rerenderCard(postId);
+
+      const textEl = document.querySelector(`[data-ai-text="${postId}"]`);
+      if (textEl) textEl.classList.add('streaming');
+
+      try {
+        // 1) Fetch comments for this single post
+        const data = await getPostComments(getRedditUrl(post));
+        const commentListing = Array.isArray(data) ? data[1] : data;
+        const rawChildren = commentListing?.data?.children || [];
+        const comments = rawChildren
+          .filter(c => c.kind === 't1')
+          .map(c => ({
+            body: c.data.body || '',
+            score: c.data.score ?? 0,
+            author: c.data.author || ''
+          }));
+
+        // 2) Stream Claude
+        const prompt = buildSinglePostDiscussPrompt(post, comments);
+        const finalText = await callClaudeStream(prompt.system, prompt.user, full => {
+          post.aiText = full;
+          const t = document.querySelector(`[data-ai-text="${postId}"]`);
+          if (t) t.textContent = full;
+        });
+        post.aiText = finalText;
+        post.archived = true;
+        state.seenIds.add(postId);
+        saveArchiveToStorage();
+        const t2 = document.querySelector(`[data-ai-text="${postId}"]`);
+        if (t2) t2.classList.remove('streaming');
+        rerenderCard(postId);
+        renderArchivePosts();
+      } catch (err) {
+        const t = document.querySelector(`[data-ai-text="${postId}"]`);
+        if (t) {
+          t.classList.remove('streaming');
+          t.textContent = '⚠ Ошибка: ' + (err.message || 'не удалось');
+        }
+        showError(err.message || 'Не удалось сгенерировать ответ');
+      } finally {
+        state.generatingPostId = null;
+        rerenderCard(postId);
+      }
+    }
+
+    // ── Content brief: prompt + sequential per-post Claude calls + .md download ──
+
+    function buildContentBriefPrompt(post, comments) {
+      const system = `You are a senior research analyst. Your job is to turn one Reddit discussion into a self-contained content brief that another AI (e.g. Claude) can use to write an article, social post, or video script — WITHOUT going back to the original source.
+
+Rules:
+- Be specific and concrete: include numbers, names of products/companies, exact claims
+- Capture the human voice — quote verbatim where it's vivid
+- No fluff, no generalities, no preamble or closing notes
+- Output ONLY the brief in the exact structure requested
+- Same language as the source post (usually English)`;
+
+      const topComments = (comments || [])
+        .slice()
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .slice(0, 12);
+
+      let body = `Title: ${post.title}\n`;
+      body += `Subreddit: r/${post.subreddit}\n`;
+      body += `Engagement: score ${post.score || 0}, ${post.num_comments || 0} comments\n`;
+      body += `URL: ${getRedditUrl(post)}\n`;
+      if (post.selftext) body += `\nPost body:\n${truncate(post.selftext, 3000)}\n`;
+      if (topComments.length) {
+        body += `\nTop comments:\n`;
+        topComments.forEach((c, i) => {
+          body += `${i + 1}. [score ${c.score || 0}] ${c.author ? '(' + c.author + ') ' : ''}${truncate(c.body || '', 800)}\n`;
+        });
+      }
+
+      const user = `Here is one Reddit post with its top comments:
+
+${body}
+
+Produce the content brief in EXACTLY this markdown structure (no extra sections):
+
+### ${post.title.replace(/[\r\n]+/g, ' ').slice(0, 200)}
+**Subreddit:** r/${post.subreddit}
+**URL:** ${getRedditUrl(post)}
+**Engagement:** score ${post.score || 0}, ${post.num_comments || 0} comments
+
+#### Summary
+(4–6 sentences. Detailed: include specific claims, numbers, names of products/companies. Capture context, the central question or problem, and what the discussion converged on.)
+
+#### Key insights
+- (3–7 bullets, specific, concrete; include data points or contrarian takes; no platitudes)
+
+#### Bright quotes
+- > "exact verbatim quote" — author / source (post or commenter)
+- (3–7 quotes total; pick most vivid, emotional, specific)
+
+#### Pain points & questions
+- (3–5 bullets: what is the audience frustrated about, what questions remain open)
+
+#### Content angles for a writer
+- **Headline-style angle 1** — one-line direction
+- **Headline-style angle 2** — one-line direction
+- (2–4 angles total; concrete, ready to use)`;
+
+      return { system, user };
+    }
+
+    function fileSafeLabel(s) {
+      return (s || 'reddit-brief').replace(/[^\w\-а-яА-ЯёЁ\s]/g, '').replace(/\s+/g, '-').slice(0, 50) || 'reddit-brief';
+    }
+
+    async function downloadContentBrief() {
+      if (state.briefRunning || state.isRunning) return;
+      if (!state.anthropicKey) { showError('Введите ключ Claude.'); return; }
+
+      const ids = Array.from(state.selectedPostIds).filter(id => {
+        const p = state.posts.get(id);
+        return p && !p.deleted && state.activeIds.includes(id);
+      });
+      if (!ids.length) { showError('Выделите хотя бы один пост.'); return; }
+
+      state.briefRunning = true;
+      updateRunBtn();
+      updateSelectionToolbar();
+      $('#errorMsg').classList.remove('visible');
+
+      const sections = [];
+      const total = ids.length;
+
+      try {
+        for (let i = 0; i < total; i++) {
+          const id = ids[i];
+          const post = state.posts.get(id);
+          const pct = Math.round((i / total) * 95);
+          showProgress(pct, `Бриф ${i + 1}/${total}: ${truncate(post.title, 50)}`);
+
+          try {
+            // 1) comments
+            const data = await getPostComments(getRedditUrl(post));
+            const commentListing = Array.isArray(data) ? data[1] : data;
+            const rawChildren = commentListing?.data?.children || [];
+            const comments = rawChildren
+              .filter(c => c.kind === 't1')
+              .map(c => ({
+                body: c.data.body || '',
+                score: c.data.score ?? 0,
+                author: c.data.author || ''
+              }));
+
+            // 2) Claude
+            const prompt = buildContentBriefPrompt(post, comments);
+            const text = await callClaudeStream(prompt.system, prompt.user, () => {});
+            sections.push(text.trim());
+          } catch (err) {
+            console.warn(`Brief failed for ${id}:`, err);
+            sections.push(`### ${post.title}\n_(не удалось сгенерировать: ${escapeHtml(err.message || 'ошибка')})_`);
+          }
+        }
+
+        // Build final MD
+        const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+        const label = fileSafeLabel(state.lastQueryLabel);
+        const filename = `reddit-brief_${label}_${stamp}.md`;
+
+        const header = [
+          `# Content brief — ${state.lastQueryLabel || 'Reddit'}`,
+          ``,
+          `_Сгенерировано: ${new Date().toLocaleString('ru-RU')} · Постов: ${total}_`,
+          ``,
+          `Этот файл содержит достаточно контекста для AI-копирайтера, чтобы написать пост или статью без захода в Reddit. Каждый раздел — отдельный пост со структурой: summary → insights → quotes → pain points → angles.`,
+          ``,
+          `---`,
+          ``
+        ].join('\n');
+
+        const body = sections.join('\n\n---\n\n');
+        const blob = new Blob([header + body + '\n'], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showProgress(100, `✓ Готово — скачан ${filename}`);
+      } catch (err) {
+        showError(err.message || 'Не удалось собрать бриф');
+        hideProgress();
+      } finally {
+        state.briefRunning = false;
+        updateRunBtn();
+        renderActivePosts();
+      }
+    }
+
+    // ── Topics / Batch ──
+    function renderTopics() {
+      const container = $('#topicsCheckboxes');
+      const prevChecked = new Set(
+        Array.from($$('.topic-checkbox:checked')).map(cb => cb.dataset.topic)
+      );
+      // Default: everything checked on first render
+      const checkedSet = prevChecked.size ? prevChecked : new Set(state.topics.map(t => t.id));
+
+      container.innerHTML = state.topics.map(topic => `
+        <label class="topic-row">
+          <input type="checkbox" class="topic-checkbox" data-topic="${escapeHtml(topic.id)}"${checkedSet.has(topic.id) ? ' checked' : ''} onchange="updateRunBtn()">
+          <span class="topic-label">${escapeHtml(topic.label)}</span>
+          <span class="topic-count">(${topic.queries.length})</span>
+        </label>
+      `).join('');
+      updateRunBtn();
+    }
+
+    function getSelectedQueries() {
+      const checked = Array.from($$('.topic-checkbox:checked')).map(cb => cb.dataset.topic);
+      const queries = [];
+      state.topics.forEach(topic => {
+        if (checked.includes(topic.id)) queries.push(...topic.queries);
+      });
+      return queries;
+    }
+
+    // ── Topics editor ──
+    function toggleTopicsEditor() {
+      const editor = $('#topicsEditor');
+      const visible = editor.classList.toggle('visible');
+      if (visible) renderTopicsEditor();
+    }
+
+    function renderTopicsEditor() {
+      const list = $('#topicsEditorList');
+      list.innerHTML = state.topics.map((topic, ti) => `
+        <div class="topic-edit-row" data-topic-idx="${ti}">
+          <div class="topic-edit-head">
+            <input type="text" value="${escapeHtml(topic.label)}" oninput="onTopicLabelInput(${ti}, this.value)" placeholder="Название категории">
+            <button class="icon-btn" type="button" onclick="deleteTopic(${ti})" title="Удалить категорию">×</button>
+          </div>
+          <div class="query-list">
+            ${topic.queries.map((q, qi) => `
+              <div class="query-item">
+                <input type="text" value="${escapeHtml(q)}" oninput="onQueryInput(${ti}, ${qi}, this.value)">
+                <button class="icon-btn" type="button" onclick="deleteQuery(${ti}, ${qi})" title="Удалить запрос">×</button>
+              </div>
+            `).join('')}
+          </div>
+          <div class="editor-actions">
+            <button type="button" onclick="addQuery(${ti})">+ Запрос</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    let _topicsSaveTimer = null;
+    function scheduleTopicsSave() {
+      clearTimeout(_topicsSaveTimer);
+      _topicsSaveTimer = setTimeout(() => {
+        saveTopicsToStorage();
+        renderTopics();
+      }, 300);
+    }
+
+    function onTopicLabelInput(ti, value) {
+      state.topics[ti].label = value;
+      scheduleTopicsSave();
+    }
+    function onQueryInput(ti, qi, value) {
+      state.topics[ti].queries[qi] = value;
+      scheduleTopicsSave();
+    }
+    function addQuery(ti) {
+      state.topics[ti].queries.push('');
+      saveTopicsToStorage();
+      renderTopicsEditor();
+      renderTopics();
+    }
+    function deleteQuery(ti, qi) {
+      state.topics[ti].queries.splice(qi, 1);
+      saveTopicsToStorage();
+      renderTopicsEditor();
+      renderTopics();
+    }
+    function deleteTopic(ti) {
+      if (!confirm(`Удалить категорию "${state.topics[ti].label}"?`)) return;
+      state.topics.splice(ti, 1);
+      saveTopicsToStorage();
+      renderTopicsEditor();
+      renderTopics();
+    }
+    function addTopicCategory() {
+      const id = 'cat-' + Date.now();
+      state.topics.push({ id, label: 'Новая категория', queries: [''] });
+      saveTopicsToStorage();
+      renderTopicsEditor();
+      renderTopics();
+    }
+    function resetTopicsToDefaults() {
+      if (!confirm('Сбросить все темы к дефолтам Unione? Ваши изменения пропадут.')) return;
+      state.topics = JSON.parse(JSON.stringify(DEFAULT_TOPICS));
+      saveTopicsToStorage();
+      renderTopicsEditor();
+      renderTopics();
+    }
+
+    // ── Preset modal (create / edit custom presets) ──
+    function openPresetModal(presetId) {
+      state.editingPresetId = presetId;
+      const modal = $('#presetModal');
+      const title = $('#presetModalTitle');
+      const labelInput = $('#presetModalLabel');
+      const chipsContainer = $('#presetModalChips');
+
+      // Clear chips
+      chipsContainer.querySelectorAll('.chip').forEach(c => c.remove());
+
+      if (presetId) {
+        const preset = state.presets.find(p => p.id === presetId);
+        if (!preset) return;
+        title.textContent = `Редактировать: ${preset.label}`;
+        labelInput.value = preset.label;
+        preset.subs.forEach(sub => addModalChip(sub));
+      } else {
+        title.textContent = 'Новый пресет';
+        labelInput.value = '';
+      }
+      modal.classList.add('visible');
+      labelInput.focus();
+    }
+
+    function closePresetModal() {
+      $('#presetModal').classList.remove('visible');
+      state.editingPresetId = null;
+    }
+
+    function focusModalChipInput() {
+      $('#presetModalChipInput').focus();
+    }
+
+    function addModalChip(text) {
+      const sub = cleanSubreddit(text);
+      if (!sub) return;
+      const container = $('#presetModalChips');
+      const existing = Array.from(container.querySelectorAll('.chip')).map(c => c.dataset.sub.toLowerCase());
+      if (existing.includes(sub.toLowerCase())) return;
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.dataset.sub = sub;
+      chip.innerHTML = `r/${escapeHtml(sub)}<button class="chip-close" onclick="this.parentElement.remove()" title="Удалить">&times;</button>`;
+      const input = $('#presetModalChipInput');
+      input.parentNode.insertBefore(chip, input);
+    }
+
+    function getModalSubs() {
+      return Array.from($('#presetModalChips').querySelectorAll('.chip')).map(c => c.dataset.sub);
+    }
+
+    function savePresetFromModal() {
+      const label = $('#presetModalLabel').value.trim();
+      const subs = getModalSubs();
+      if (!label) { alert('Введите название пресета.'); return; }
+      if (!subs.length) { alert('Добавьте хотя бы один сабреддит.'); return; }
+
+      if (state.editingPresetId) {
+        const preset = state.presets.find(p => p.id === state.editingPresetId);
+        if (preset && !preset.builtin) {
+          preset.label = label;
+          preset.subs = subs;
+        }
+      } else {
+        const id = 'p-' + Date.now();
+        state.presets.push({ id, label, subs, builtin: false });
+        state.activePreset = id;
+      }
+      savePresetsToStorage();
+      renderPresetTabs();
+      setPreset(state.activePreset);
+      closePresetModal();
+    }
+
+    function deletePreset(presetId) {
+      const preset = state.presets.find(p => p.id === presetId);
+      if (!preset || preset.builtin) return;
+      if (!confirm(`Удалить пресет "${preset.label}"?`)) return;
+      state.presets = state.presets.filter(p => p.id !== presetId);
+      if (state.activePreset === presetId) state.activePreset = state.presets[0]?.id || 'unione';
+      savePresetsToStorage();
+      renderPresetTabs();
+      setPreset(state.activePreset);
+    }
+
+    function initPresetModal() {
+      const input = $('#presetModalChipInput');
+      input.addEventListener('keydown', e => {
+        if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
+          e.preventDefault();
+          input.value.split(/[,\s]+/).forEach(part => part && addModalChip(part));
+          input.value = '';
+        }
+        if (e.key === 'Backspace' && !input.value) {
+          const chips = $('#presetModalChips').querySelectorAll('.chip');
+          if (chips.length) chips[chips.length - 1].remove();
+        }
+      });
+      input.addEventListener('paste', e => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        text.split(/[,\s]+/).forEach(part => part && addModalChip(part));
+      });
+      // Close on backdrop click
+      $('#presetModal').addEventListener('click', e => {
+        if (e.target.id === 'presetModal') closePresetModal();
+      });
+    }
+
+    // ── Search pipeline (no Claude — only Reddit) ──
+    async function findPosts() {
+      if (state.isRunning || state.briefRunning) return;
+      $('#errorMsg').classList.remove('visible');
+
+      const queries = collectActiveQueries();
+      const subreddits = getSubreddits();
+      if (!queries.length) { showError('Введите запрос или выберите хотя бы одну категорию тем.'); return; }
+      if (!subreddits.length) { showError('Добавьте хотя бы один сабреддит.'); return; }
+
+      // Свежая выборка: только активные сбрасываем. Архив (state.posts c archived=true) и
+      // deletedIds сохраняются — это персистентный фильтр против повторных постов.
+      state.activeIds = [];
+      state.topicAfterCursors = {};
+      state.selectedPostIds = new Set();
+      state.lastQueryLabel = queries.length === 1 ? queries[0] : `${queries.length} тем`;
+
+      state.isRunning = true;
+      updateRunBtn();
+      showProgress(20, 'Ищу посты на Reddit...');
+      $('#resultsSection').classList.add('visible');
+      switchTab('active');
+
+      try {
+        await fetchAndAppendPosts(PAGE_SIZE);
+        showProgress(100, `Загружено ${state.activeIds.length} постов`);
+        if (!state.activeIds.length) showError('Reddit ничего не вернул по этим темам (или все попавшие — уже в архиве).');
+      } catch (err) {
+        showError(err.message || 'Не удалось загрузить посты');
+        hideProgress();
+      } finally {
+        state.isRunning = false;
+        updateRunBtn();
+        renderActivePosts();
+        renderArchivePosts();
+      }
+    }
+
+    async function loadMorePosts() {
+      if (state.isRunning || state.briefRunning) return;
+      $('#errorMsg').classList.remove('visible');
+
+      // 1) Drop archived/deleted from active view
+      state.activeIds = state.activeIds.filter(id => {
+        const p = state.posts.get(id);
+        return p && !p.archived && !p.deleted;
+      });
+
+      state.isRunning = true;
+      updateRunBtn();
+      renderActivePosts();
+      showProgress(20, 'Догружаю с Reddit...');
+
+      try {
+        await fetchAndAppendPosts(PAGE_SIZE);
+        showProgress(100, `Активных: ${state.activeIds.filter(id => !state.posts.get(id)?.archived).length}`);
+      } catch (err) {
+        showError(err.message || 'Не удалось догрузить');
+        hideProgress();
+      } finally {
+        state.isRunning = false;
+        updateRunBtn();
+        renderActivePosts();
+      }
+    }
+
+    // Fetch up to `n` new unique posts; appends to state.posts and state.activeIds.
+    // Strategy: top by engagement across all selected queries; paginate via `after` cursors.
+    async function fetchAndAppendPosts(n) {
+      const queries = collectActiveQueries();
+      const subreddits = getSubreddits();
+      const sort = $('#sortSelect').value;
+      const timeframe = $('#timeframeSelect').value;
+      const combined = subreddits.join('+');
+
+      let added = 0;
+      let attempts = 0;
+      const MAX_ATTEMPTS = 2;
+
+      while (added < n && attempts < MAX_ATTEMPTS) {
+        attempts++;
+        const collected = [];
+
+        for (const q of queries) {
+          // null = first page; '__END__' = exhausted
+          const cursor = state.topicAfterCursors[q];
+          if (cursor === '__END__') continue;
+
+          const params = new URLSearchParams({
+            subreddit: combined, q, sort, t: timeframe, limit: String(FETCH_LIMIT_PER_QUERY)
+          });
+          if (cursor) params.set('after', cursor);
+
+          try {
+            const data = await fetchWithTimeout('/api/search?' + params, {});
+            const newAfter = data?.data?.after || '__END__';
+            state.topicAfterCursors[q] = newAfter;
+            const raw = (data?.data?.children || []).map(c => c.data);
+            for (const rawPost of raw) {
+              const np = normalizePost(rawPost);
+              if (!np.id || state.seenIds.has(np.id)) continue;
+              state.seenIds.add(np.id);
+              collected.push(np);
+            }
+          } catch (err) {
+            console.warn(`Skip query "${q}":`, err.message);
+          }
+        }
+
+        // Sort by engagement (top first)
+        collected.sort((a, b) => engagementScore(b) - engagementScore(a));
+
+        for (const p of collected) {
+          if (added >= n) break;
+          state.posts.set(p.id, p);
+          state.activeIds.push(p.id);
+          added++;
+        }
+
+        // If pagination is exhausted for all queries — stop
+        const allEnded = queries.every(q => state.topicAfterCursors[q] === '__END__');
+        if (added < n && allEnded) break;
+      }
+
+      return added;
+    }
+
+    // Legacy stub kept so older inline handlers don't blow up if any remain.
+    function updateBatchBtn() { /* deprecated — UI now driven by updateRunBtn */ }
+
+
+    // ── Init ──
+    function init() {
+      // Load presets and topics from localStorage (or defaults)
+      state.presets = loadPresetsFromStorage();
+      state.topics = loadTopicsFromStorage();
+
+      // Restore persistent archive + deletedIds + rebuild seenIds for dedup
+      loadArchiveFromStorage();
+
+      // Make sure activePreset still exists (in case storage had a stale id)
+      if (!state.presets.find(p => p.id === state.activePreset)) {
+        state.activePreset = state.presets[0]?.id || 'unione';
+      }
+
+      // Render preset tabs and set default
+      renderPresetTabs();
+      setPreset(state.activePreset);
+
+      // Render topics checkboxes
+      renderTopics();
+
+      // Init chips inputs (main + modal)
+      initChipsInput();
+      initPresetModal();
+
+      // API key listener
+      $('#anthropicKey').addEventListener('input', e => {
+        state.anthropicKey = e.target.value.trim();
+        $('#anthropicDot').classList.toggle('active', !!state.anthropicKey);
+        updateRunBtn();
+      });
+
+      // Manual query field — react to typing (button label updates) + Enter to fire
+      $('#queryInput').addEventListener('input', updateRunBtn);
+      $('#queryInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !state.isRunning) findPosts();
+      });
+
+      // Esc closes preset modal
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && $('#presetModal').classList.contains('visible')) {
+          closePresetModal();
+        }
+      });
+
+      // Load saved keys
+      loadKeys();
+
+      // Если в архиве уже есть посты — показать секцию результатов сразу
+      const hasArchive = Array.from(state.posts.values()).some(p => p.archived && !p.deleted);
+      if (hasArchive) {
+        $('#resultsSection').classList.add('visible');
+        renderActivePosts();
+        renderArchivePosts();
+      }
+
+      updateRunBtn();
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
