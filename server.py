@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reddit Intel proxy — proxies to Reddit's public .json API. No auth needed."""
 
+import base64
 import http.server
 import socketserver
 import json
@@ -13,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-PORT = 3456
+PORT = int(os.environ.get("PORT", 3456))
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # Rate limiter: 1.5s between Reddit requests (~40 req/min, well under anonymous limit)
@@ -21,6 +22,11 @@ _last_request = 0
 RATE_LIMIT_SECONDS = 1.5
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 3
+
+# Basic Auth (optional — set AUTH_USER + AUTH_PASS env vars to enable)
+AUTH_USER = os.environ.get("AUTH_USER", "")
+AUTH_PASS = os.environ.get("AUTH_PASS", "")
+AUTH_REALM = "Reddit Intel"
 
 
 def reddit_get(url):
@@ -52,19 +58,56 @@ def reddit_get(url):
 class RedditProxyHandler(http.server.SimpleHTTPRequestHandler):
     """Handles /api/* as Reddit proxy, everything else as static files."""
 
+    # ── Auth ──────────────────────────────────────────────────────────────
+
+    def _is_authenticated(self):
+        """Return True if auth is disabled or credentials match."""
+        if not AUTH_USER and not AUTH_PASS:
+            return True  # no auth configured → open
+        header = self.headers.get("Authorization", "")
+        if not header.startswith("Basic "):
+            return False
+        try:
+            decoded = base64.b64decode(header[6:]).decode("utf-8")
+            user, _, pwd = decoded.partition(":")
+            return user == AUTH_USER and pwd == AUTH_PASS
+        except Exception:
+            return False
+
+    def _send_auth_challenge(self):
+        body = b"Unauthorized"
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", f'Basic realm="{AUTH_REALM}"')
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ── HTTP verbs ─────────────────────────────────────────────────────────
+
     def do_OPTIONS(self):
+        if not self._is_authenticated():
+            self._send_auth_challenge()
+            return
         self.send_response(200)
         self._cors()
         self.end_headers()
 
     def do_GET(self):
+        if not self._is_authenticated():
+            self._send_auth_challenge()
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/search":
             self._handle_search(parsed)
         elif parsed.path == "/api/comments":
             self._handle_comments(parsed)
+        elif parsed.path == "/api/config":
+            self._handle_config()
         else:
             super().do_GET()
+
+    # ── Helpers ────────────────────────────────────────────────────────────
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -85,6 +128,12 @@ class RedditProxyHandler(http.server.SimpleHTTPRequestHandler):
         self._cors()
         self.end_headers()
         self.wfile.write(body)
+
+    # ── Endpoints ──────────────────────────────────────────────────────────
+
+    def _handle_config(self):
+        """Return server-side config (Claude key) for first-run prefill."""
+        self._json_ok({"claudeKey": os.environ.get("CLAUDE_API_KEY", "")})
 
     def _handle_search(self, parsed):
         params = parse_qs(parsed.query)

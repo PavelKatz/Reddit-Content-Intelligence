@@ -1027,6 +1027,23 @@
       } catch {}
     }
 
+    // Fetch server-side config (Claude key pre-fill) on first run
+    async function loadServerConfig() {
+      if (state.anthropicKey) return; // already have a key — skip
+      try {
+        const resp = await fetch('/api/config');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.claudeKey) {
+          state.anthropicKey = data.claudeKey;
+          $('#anthropicKey').value = data.claudeKey;
+          $('#anthropicDot').classList.add('active');
+          localStorage.setItem('reddit-intel-keys', JSON.stringify({ anthropicKey: data.claudeKey }));
+          updateRunBtn();
+        }
+      } catch {}
+    }
+
     // ── UI helpers ──
     function toggleCollapsible(header) {
       const body = header.nextElementSibling;
@@ -2229,8 +2246,9 @@ Produce the content brief in EXACTLY this markdown structure (no extra sections)
         }
       });
 
-      // Load saved keys
+      // Load saved keys, then try server-side pre-fill for first run
       loadKeys();
+      loadServerConfig();
 
       // Если в архиве уже есть посты — показать секцию результатов сразу
       const hasArchive = Array.from(state.posts.values()).some(p => p.archived && !p.deleted);
