@@ -1133,9 +1133,9 @@
         const remaining = limit - allPosts.length;
         if (remaining <= 0) break;
         const pageLimit = Math.min(100, remaining);
-        const params = new URLSearchParams({ q: query, sort, t: timeframe, limit: String(pageLimit), restrict_sr: 'true' });
+        const params = new URLSearchParams({ subreddit, q: query, sort, t: timeframe, limit: String(pageLimit) });
         if (after) params.set('after', after);
-        const data = await fetchWithTimeout(`https://www.reddit.com/r/${subreddit}/search.json?${params}`, {});
+        const data = await fetchWithTimeout('/api/search?' + params, {}, 60000);
         const raw = (data?.data?.children || []).map(c => c.data);
         if (!raw.length) break;
         for (const p of raw) allPosts.push(normalizePost(p));
@@ -1160,7 +1160,8 @@
     async function getPostComments(postUrl) {
       const match = postUrl.match(/\/comments\/([a-z0-9]+)/i);
       if (!match) throw new Error('Cannot extract post ID from URL: ' + postUrl);
-      return await fetchWithTimeout(`https://www.reddit.com/comments/${match[1]}.json?sort=top&limit=20`, {});
+      const params = new URLSearchParams({ article_id: match[1] });
+      return await fetchWithTimeout('/api/comments?' + params, {}, 60000);
     }
 
     const CLAUDE_MODEL = 'claude-sonnet-4-6';
@@ -2158,12 +2159,12 @@ Produce the content brief in EXACTLY this markdown structure (no extra sections)
           if (cursor === '__END__') continue;
 
           const params = new URLSearchParams({
-            q, sort, t: timeframe, limit: String(FETCH_LIMIT_PER_QUERY), restrict_sr: 'true'
+            subreddit: combined, q, sort, t: timeframe, limit: String(FETCH_LIMIT_PER_QUERY)
           });
           if (cursor) params.set('after', cursor);
 
           try {
-            const data = await fetchWithTimeout(`https://www.reddit.com/r/${combined}/search.json?${params}`, {});
+            const data = await fetchWithTimeout('/api/search?' + params, {}, 60000);
             const newAfter = data?.data?.after || '__END__';
             state.topicAfterCursors[q] = newAfter;
             const raw = (data?.data?.children || []).map(c => c.data);
